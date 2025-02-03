@@ -64,7 +64,6 @@ public class TelaLeilao extends javax.swing.JPanel {
 
                         } else if (json.getString("tipo").equals("atualizacao")) {
                             String mensagem = "Novo lance:  R$" + json.getDouble("valor");
-                            System.out.println(mensagem);
                             SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
                         } else {
                             //Adiciona o nome do item no tf

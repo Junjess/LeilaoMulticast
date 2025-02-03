@@ -54,7 +54,7 @@ public class Server {
             System.out.println("Servidor aguardando conexões na porta " + PORT + "...");
             criarMulticast();
             adicionandoItens();
-            while (conexoes < 1) {
+            while (conexoes < 2) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
 
@@ -130,7 +130,9 @@ public class Server {
                 while (continuar) {
                     Thread.sleep(100);
                 }
+                System.out.println("Vencedor"+ganhador);
             }
+         multicastSocket.close();
         } catch (IOException ex) {
 
         }
@@ -278,26 +280,29 @@ public class Server {
                 if (!json.getString("tipo").equals("item") && !json.getString("tipo").equals("tempo")&&!json.getString("tipo").equals("atualizacao")) {
                     String item = descriptografarAES(json.getString("item"), stringParaSecretKey(chaveAES));
                     double valor = Double.parseDouble(descriptografarAES(json.getString("valor"), stringParaSecretKey(chaveAES)));
-                    ganhador = descriptografarAES(json.getString("cliente"), stringParaSecretKey(chaveAES));
+                    String cliente = descriptografarAES(json.getString("cliente"), stringParaSecretKey(chaveAES));
                     double valorLance = valor;
                     for (int i = 0; i < itensLeilao.size(); i++) {
-                        if (itensLeilao.get(i).getNomeItem().equals("Motoca Rosa")) {
+                        if (itensLeilao.get(i).getNomeItem().equals(item)) {
                             if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                                 enviarAtualizacao(item, valorLance);
                                 itensLeilao.get(i).setValorMinimo(valorLance);
-                                ganhador = json.getString("cliente");
+                                ganhador  = cliente;
+                                break;
                             }
-                        } else if (itensLeilao.get(i).getNomeItem().equals("Boneca Barbie")) {
+                        } else if (itensLeilao.get(i).getNomeItem().equals(item)) {
                             if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                                 enviarAtualizacao(item, valorLance);
                                 itensLeilao.get(i).setValorMinimo(valorLance);
-                                ganhador = json.getString("cliente");
+                                ganhador  = cliente;
+                                break;
                             }
-                        } else if (itensLeilao.get(i).getNomeItem().equals("Carrinho HotWheels")) {
+                        } else if (itensLeilao.get(i).getNomeItem().equals(item)) {
                             if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                                 enviarAtualizacao(item, valorLance);
                                 itensLeilao.get(i).setValorMinimo(valorLance);
-                                ganhador = json.getString("cliente");
+                                ganhador = cliente;
+                                break;
                             }
                         }
                     }
