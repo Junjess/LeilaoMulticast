@@ -4,8 +4,13 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
+import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import javax.swing.SwingUtilities;
 import org.json.JSONObject;
 
@@ -16,6 +21,7 @@ public class TelaLeilao extends javax.swing.JPanel {
     String aesKey;
     private InetAddress group;
     private MulticastSocket multicastSocket;
+    private byte[] iv = new byte[16];
 
     public TelaLeilao(String grupo, int porta, String aes) throws IOException {
         initComponents();
@@ -58,7 +64,7 @@ public class TelaLeilao extends javax.swing.JPanel {
                         if (json.getString("tipo").equals("atualizacao")) {
                             String mensagem = "Novo lance:  R$" + json.getDouble("valor");
                             System.out.println(mensagem);
-                            SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" +mensagem ));
+                            SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
                         }
                     } else {
                         //Adiciona o nome do item no tf
@@ -186,16 +192,28 @@ public class TelaLeilao extends javax.swing.JPanel {
 
     public void enviarLance(String item, double valorLance) throws Exception {
         JSONObject jsonLance = new JSONObject();
-        jsonLance.put("tipo", "lance"); // Identificador da mensagem
-        jsonLance.put("item", item);
-        jsonLance.put("valor", valorLance);
+        jsonLance.put("tipo", encriptarLance("lance", stringParaSecretKey(aesKey),iv)); // Identificador da mensagem
+        jsonLance.put("item", encriptarLance(item, stringParaSecretKey(aesKey), iv));
+        jsonLance.put("valor", encriptarLance(String.valueOf(valorLance), stringParaSecretKey(aesKey), iv));
 
         byte[] data = jsonLance.toString().getBytes();
+        
         group = InetAddress.getByName(grupoMulticast);
-
         DatagramPacket packet = new DatagramPacket(data, data.length, group, portaMulticast);
         multicastSocket.send(packet);
         System.out.println("Lance enviado: " + jsonLance);
+    }
+
+    public static SecretKey stringParaSecretKey(String key) {
+        byte[] decodedKey = Base64.getDecoder().decode(key);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    public static String encriptarLance(String message, SecretKey secretKey, byte[] iv) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        byte[] encryptedBytes = cipher.doFinal(message.getBytes());
+        return Base64.getEncoder().encodeToString(encryptedBytes);
     }
 
     private void bt_enviarLanceMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_enviarLanceMouseClicked

@@ -24,6 +24,8 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -38,8 +40,8 @@ public class Server {
     private static final int MULTICAST_PORT = 5000; // Porta do grupo
     private List<Itens> itensLeilao;
     private ExecutorService executor = Executors.newCachedThreadPool();
-    private ScheduledExecutorService scheduler;
     private boolean continuar = false;
+    private String chaveAES = "";
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
@@ -74,7 +76,7 @@ public class Server {
                 if (entrar == true) {
                     //Enviando resposta ao cliente
 
-                    String chaveAES = criarAES();
+                    chaveAES = criarAES();
                     jsonResponse.put("entrada", "true");
                     jsonResponse.put("grupo", criptografarComChavePublica(chavePublica, MULTICAST_GROUP));
                     jsonResponse.put("porta", criptografarComChavePublica(chavePublica, String.valueOf(MULTICAST_PORT)));
@@ -268,10 +270,9 @@ public class Server {
                 byte[] buffer = new byte[1024];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 multicastSocket.receive(packet); // Recebe o pacote do cliente
-                System.out.println("Mensagem recebida");
                 String jsonString = new String(packet.getData(), 0, packet.getLength());
-                JSONObject json = new JSONObject(jsonString);
-
+                JSONObject json = new JSONObject(descriptografarAES(jsonString, stringParaSecretKey(chaveAES)));
+                
                 if (!json.has("tipo") || !json.getString("tipo").equals("lance")) {
                     continue; // Continua aguardando mais pacotes
                 }
@@ -282,24 +283,23 @@ public class Server {
                 //EXEMPLO PRO MOMOI USAR 
                 System.out.println(itensLeilao.get(0).getValorInicial());
                 for (int i = 0; i < itensLeilao.size(); i++) {
-                    if (itensLeilao.get(i).equals("Motoca Rosa")) {
+                    if (itensLeilao.get(i).getNomeItem().equals("Motoca Rosa")) {
                         if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                             enviarAtualizacao(item, valorLance);
                             itensLeilao.get(i).setValorMinimo(valorLance);
                         }
-                    } else if (itensLeilao.get(i).equals("Boneca Barbie")) {
+                    } else if (itensLeilao.get(i).getNomeItem().equals("Boneca Barbie")) {
                         if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                             enviarAtualizacao(item, valorLance);
                             itensLeilao.get(i).setValorMinimo(valorLance);
                         }
-                    } else if (itensLeilao.get(i).equals("Carrinho HotWheels")) {
+                    } else if (itensLeilao.get(i).getNomeItem().equals("Carrinho HotWheels")) {
                         if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                             enviarAtualizacao(item, valorLance);
                             itensLeilao.get(i).setValorMinimo(valorLance);
                         }
                     }
                 }
-
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -319,4 +319,15 @@ public class Server {
         System.out.println("Atualização enviada");
     }
 
+    public static String descriptografarAES(String message, SecretKey secretKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey);
+        byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
+        return new String(decryptedBytes);
+    }
+
+    public static SecretKey stringParaSecretKey(String key) {
+        byte[] decodedKey = Base64.getDecoder().decode(key);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
 }
