@@ -24,7 +24,6 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -42,6 +41,8 @@ public class Server {
     private ExecutorService executor = Executors.newCachedThreadPool();
     private boolean continuar = false;
     private String chaveAES = "";
+    private String ganhador = "";
+    private int conexoes = 0;
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
@@ -53,7 +54,7 @@ public class Server {
             System.out.println("Servidor aguardando conexões na porta " + PORT + "...");
             criarMulticast();
             adicionandoItens();
-            while (true) {
+            while (conexoes < 1) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
 
@@ -83,13 +84,14 @@ public class Server {
                     jsonResponse.put("aes", criptografarComChavePublica(chavePublica, chaveAES));
                     jsonResponse.put("assinatura", criptografarComChavePublica(chavePublica, "server"));
                     out.println(jsonResponse);
+                    conexoes++;
                 } else {
                     jsonResponse.put("Entrada não autorizada", false);
                     out.println(jsonResponse);
                 }
-                iniciarLeilao();
                 clientSocket.close();
             }
+            iniciarLeilao();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -267,39 +269,40 @@ public class Server {
     private void processarLance() {
         while (continuar) {
             try {
-                byte[] buffer = new byte[1024];
+                byte[] buffer = new byte[2048];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 multicastSocket.receive(packet); // Recebe o pacote do cliente
                 String jsonString = new String(packet.getData(), 0, packet.getLength());
-                JSONObject json = new JSONObject(descriptografarAES(jsonString, stringParaSecretKey(chaveAES)));
-                
-                if (!json.has("tipo") || !json.getString("tipo").equals("lance")) {
-                    continue; // Continua aguardando mais pacotes
-                }
-
-                double valorLance = json.getDouble("valor");
-                String item = json.getString("item");
-                System.out.println(item);
-                //EXEMPLO PRO MOMOI USAR 
-                System.out.println(itensLeilao.get(0).getValorInicial());
-                for (int i = 0; i < itensLeilao.size(); i++) {
-                    if (itensLeilao.get(i).getNomeItem().equals("Motoca Rosa")) {
-                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
-                            enviarAtualizacao(item, valorLance);
-                            itensLeilao.get(i).setValorMinimo(valorLance);
-                        }
-                    } else if (itensLeilao.get(i).getNomeItem().equals("Boneca Barbie")) {
-                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
-                            enviarAtualizacao(item, valorLance);
-                            itensLeilao.get(i).setValorMinimo(valorLance);
-                        }
-                    } else if (itensLeilao.get(i).getNomeItem().equals("Carrinho HotWheels")) {
-                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
-                            enviarAtualizacao(item, valorLance);
-                            itensLeilao.get(i).setValorMinimo(valorLance);
+                JSONObject json = new JSONObject(jsonString);
+                //Descriptografa com AES
+                if (!json.getString("tipo").equals("item") && !json.getString("tipo").equals("tempo")&&!json.getString("tipo").equals("atualizacao")) {
+                    String item = descriptografarAES(json.getString("item"), stringParaSecretKey(chaveAES));
+                    double valor = Double.parseDouble(descriptografarAES(json.getString("valor"), stringParaSecretKey(chaveAES)));
+                    ganhador = descriptografarAES(json.getString("cliente"), stringParaSecretKey(chaveAES));
+                    double valorLance = valor;
+                    for (int i = 0; i < itensLeilao.size(); i++) {
+                        if (itensLeilao.get(i).getNomeItem().equals("Motoca Rosa")) {
+                            if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                                enviarAtualizacao(item, valorLance);
+                                itensLeilao.get(i).setValorMinimo(valorLance);
+                                ganhador = json.getString("cliente");
+                            }
+                        } else if (itensLeilao.get(i).getNomeItem().equals("Boneca Barbie")) {
+                            if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                                enviarAtualizacao(item, valorLance);
+                                itensLeilao.get(i).setValorMinimo(valorLance);
+                                ganhador = json.getString("cliente");
+                            }
+                        } else if (itensLeilao.get(i).getNomeItem().equals("Carrinho HotWheels")) {
+                            if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                                enviarAtualizacao(item, valorLance);
+                                itensLeilao.get(i).setValorMinimo(valorLance);
+                                ganhador = json.getString("cliente");
+                            }
                         }
                     }
                 }
+
             } catch (Exception e) {
                 e.printStackTrace();
             }

@@ -169,7 +169,6 @@ public class TelaInicialCliente extends javax.swing.JPanel {
     }
 
     private String descriptografar(PrivateKey chavePrivada, String message) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
-
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.DECRYPT_MODE, keyPair.getChavePrivada());
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
@@ -203,7 +202,7 @@ public class TelaInicialCliente extends javax.swing.JPanel {
                 String assinaturaServer = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("assinatura"));
 
                 if (entrada.equals("true") && assinaturaServer.equals("server")) {
-                    Janela.telaLeilao = new TelaLeilao(grupo, porta, aes);
+                    Janela.telaLeilao = new TelaLeilao(grupo, porta, aes, cpf_tf.getText());
                     JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
                     janela.getContentPane().remove(this);
                     janela.add(Janela.telaLeilao, BorderLayout.CENTER);

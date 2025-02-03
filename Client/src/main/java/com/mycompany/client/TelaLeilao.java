@@ -9,25 +9,25 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.swing.SwingUtilities;
 import org.json.JSONObject;
 
 public class TelaLeilao extends javax.swing.JPanel {
 
-    String grupoMulticast;
-    int portaMulticast;
-    String aesKey;
+    private String grupoMulticast;
+    private int portaMulticast;
+    private String aesKey;
+    private String cpf;
     private InetAddress group;
     private MulticastSocket multicastSocket;
-    private byte[] iv = new byte[16];
 
-    public TelaLeilao(String grupo, int porta, String aes) throws IOException {
+    public TelaLeilao(String grupo, int porta, String aes, String cpfCliente) throws IOException {
         initComponents();
         grupoMulticast = grupo;
         portaMulticast = porta;
         aesKey = aes;
+        cpf = cpfCliente;
         group = InetAddress.getByName(grupoMulticast);
         multicastSocket = new MulticastSocket(portaMulticast);
         entrarNoGrupoMulticast();
@@ -55,31 +55,33 @@ public class TelaLeilao extends javax.swing.JPanel {
                     JSONObject json = new JSONObject(jsonString);
 
                     System.out.println("Mensagem recebida:" + json);
-                    if (json.has("tempoRestante")) {
-                        // Se for tempo restante
-                        String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
-                        SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
 
-                    } else if (json.has("tipo")) {
-                        if (json.getString("tipo").equals("atualizacao")) {
+                    if (!json.has("cliente")) {
+                        if (json.has("tempoRestante")) {
+                            // Se for tempo restante
+                            String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
+                            SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
+
+                        } else if (json.getString("tipo").equals("atualizacao")) {
                             String mensagem = "Novo lance:  R$" + json.getDouble("valor");
                             System.out.println(mensagem);
                             SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
+                        } else {
+                            //Adiciona o nome do item no tf
+                            String item = json.getString("item");
+                            tf_nomeItem.setText(item);
+
+                            // Formata a exibição para o TextArea
+                            String itemFormatado = "| Valor inicial: R$" + json.getDouble("valor inicial")
+                                    + "\n | Lance mínimo R$" + json.getInt("valor minimo")
+                                    + "\n | Valor mínimo entre lances R$" + json.getInt("valor minimo por lance");
+
+                            // Atualiza o TextArea com a informação do item
+                            SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
+                            nomeItem = item;
                         }
-                    } else {
-                        //Adiciona o nome do item no tf
-                        String item = json.getString("nome");
-                        tf_nomeItem.setText(item);
-
-                        // Formata a exibição para o TextArea
-                        String itemFormatado = "| Valor inicial: R$" + json.getDouble("valor inicial")
-                                + "\n | Lance mínimo R$" + json.getInt("valor minimo")
-                                + "\n | Valor mínimo entre lances R$" + json.getInt("valor minimo por lance");
-
-                        // Atualiza o TextArea com a informação do item
-                        SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
-                        nomeItem = item;
                     }
+
                 }
 
             } catch (IOException e) {
@@ -192,12 +194,13 @@ public class TelaLeilao extends javax.swing.JPanel {
 
     public void enviarLance(String item, double valorLance) throws Exception {
         JSONObject jsonLance = new JSONObject();
-        jsonLance.put("tipo", encriptarLance("lance", stringParaSecretKey(aesKey),iv)); // Identificador da mensagem
-        jsonLance.put("item", encriptarLance(item, stringParaSecretKey(aesKey), iv));
-        jsonLance.put("valor", encriptarLance(String.valueOf(valorLance), stringParaSecretKey(aesKey), iv));
+        jsonLance.put("tipo", "lance"); // Identificador da mensagem
+        jsonLance.put("item", encriptarLance(item, stringParaSecretKey(aesKey)));
+        jsonLance.put("valor", encriptarLance(String.valueOf(valorLance), stringParaSecretKey(aesKey)));
+        jsonLance.put("cliente", encriptarLance(cpf, stringParaSecretKey(aesKey)));
 
         byte[] data = jsonLance.toString().getBytes();
-        
+
         group = InetAddress.getByName(grupoMulticast);
         DatagramPacket packet = new DatagramPacket(data, data.length, group, portaMulticast);
         multicastSocket.send(packet);
@@ -209,7 +212,7 @@ public class TelaLeilao extends javax.swing.JPanel {
         return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 
-    public static String encriptarLance(String message, SecretKey secretKey, byte[] iv) throws Exception {
+    public static String encriptarLance(String message, SecretKey secretKey) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
         byte[] encryptedBytes = cipher.doFinal(message.getBytes());
