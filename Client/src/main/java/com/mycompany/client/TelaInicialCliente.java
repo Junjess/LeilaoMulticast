@@ -98,14 +98,14 @@ public class TelaInicialCliente extends javax.swing.JPanel {
         );
     }// </editor-fold>//GEN-END:initComponents
 
-     public static String assinaturaCPF(String cpf, keyPair keyPair) throws Exception {
+    public static String assinaturaCPF(String cpf, keyPair keyPair) throws Exception {
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initSign(keyPair.getChavePrivada());
         signature.update(cpf.getBytes());
         byte[] signedData = signature.sign();
         return Base64.getEncoder().encodeToString(signedData);
     }
-    
+
     private void salvarChavePublica(String cpf) throws IOException {
         String publicKeyBase64 = Base64.getEncoder().encodeToString(keyPair.getChavePublica().getEncoded());
 
@@ -168,8 +168,8 @@ public class TelaInicialCliente extends javax.swing.JPanel {
         }
     }
 
-    private String descriptografar(PrivateKey chavePrivada, String message) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException{
-        
+    private String descriptografar(PrivateKey chavePrivada, String message) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
+
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.DECRYPT_MODE, keyPair.getChavePrivada());
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
@@ -182,39 +182,37 @@ public class TelaInicialCliente extends javax.swing.JPanel {
             try ( Socket socket = new Socket("localhost", 50001)) {
                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                
-                String assinatura = assinaturaCPF(cpf_tf.getText(),keyPair);
-                System.out.println("Assinatura: "+assinatura);
+
+                String assinatura = assinaturaCPF(cpf_tf.getText(), keyPair);
+                System.out.println("Assinatura: " + assinatura);
                 // Enviar mensagem ao servidor
                 JSONObject json = new JSONObject();
                 json.put("assinatura", assinatura);
                 json.put("cpf", cpf_tf.getText());
-                
 
                 String message = json.toString();
                 out.println(message);
 
                 String resposta = in.readLine();// Receber resposta do servidor
                 JSONObject jsonResponse = new JSONObject(resposta);
-                
-                String entrada =jsonResponse.getString("entrada");
-                String grupo= descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("grupo"));
+
+                String entrada = jsonResponse.getString("entrada");
+                String grupo = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("grupo"));
                 int porta = Integer.valueOf(descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("porta")));
                 String aes = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("aes"));
                 String assinaturaServer = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("assinatura"));
 
-                if(entrada.equals("true") && assinaturaServer.equals("server")){
-                    System.out.println("ENTROOOOO");
-                    Janela.telaEntrada = new TelaEntrada(grupo,porta,aes);
+                if (entrada.equals("true") && assinaturaServer.equals("server")) {
+                    Janela.telaLeilao = new TelaLeilao(grupo, porta, aes);
                     JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
                     janela.getContentPane().remove(this);
-                    janela.add(Janela.telaEntrada, BorderLayout.CENTER);
+                    janela.add(Janela.telaLeilao, BorderLayout.CENTER);
                     janela.pack();
-                }else{
+                } else {
                     System.out.println("NÃO ENTROU");
                     //tela de erro, entrada negada
                 }
-                
+
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (Exception ex) {

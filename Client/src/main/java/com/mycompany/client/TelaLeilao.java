@@ -26,6 +26,8 @@ public class TelaLeilao extends javax.swing.JPanel {
         multicastSocket = new MulticastSocket(portaMulticast);
         entrarNoGrupoMulticast();
         ta_todosLances.setEditable(false);
+        tf_nomeItem.setEditable(false);
+        tf_tempoRestante.setEditable(false);
 
     }
 
@@ -37,7 +39,6 @@ public class TelaLeilao extends javax.swing.JPanel {
                 byte[] buffer = new byte[1024]; // Buffer para armazenar os dados recebidos
                 String nomeItem = "";
                 while (true) {
-                    System.out.println("vem");
                     // Recebe o pacote de dados
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     multicastSocket.receive(packet);
@@ -46,26 +47,33 @@ public class TelaLeilao extends javax.swing.JPanel {
 
                     // Converte a string JSON para um JSONObject
                     JSONObject json = new JSONObject(jsonString);
+
+                    System.out.println("Mensagem recebida:" + json);
                     if (json.has("tempoRestante")) {
                         // Se for tempo restante
                         String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
                         SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
 
+                    } else if (json.has("tipo")) {
+                        if (json.getString("tipo").equals("atualizacao")) {
+                            String mensagem = "Novo lance:  R$" + json.getDouble("valor");
+                            System.out.println(mensagem);
+                            SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" +mensagem ));
+                        }
                     } else {
                         //Adiciona o nome do item no tf
                         String item = json.getString("nome");
                         tf_nomeItem.setText(item);
-                        
+
                         // Formata a exibição para o TextArea
-                        String itemFormatado ="| Valor inicial: R$" + json.getDouble("valor inicial")
+                        String itemFormatado = "| Valor inicial: R$" + json.getDouble("valor inicial")
                                 + "\n | Lance mínimo R$" + json.getInt("valor minimo")
                                 + "\n | Valor mínimo entre lances R$" + json.getInt("valor minimo por lance");
-                        
+
                         // Atualiza o TextArea com a informação do item
-                        SwingUtilities.invokeLater(() -> ta_todosLances.append(itemFormatado));
+                        SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
                         nomeItem = item;
                     }
-                    iniciarRecebimento(nomeItem);
                 }
 
             } catch (IOException e) {
@@ -188,48 +196,6 @@ public class TelaLeilao extends javax.swing.JPanel {
         DatagramPacket packet = new DatagramPacket(data, data.length, group, portaMulticast);
         multicastSocket.send(packet);
         System.out.println("Lance enviado: " + jsonLance);
-    }
-
-    private void iniciarRecebimento(String item) {
-        new Thread(() -> {
-            try {
-                while (true) {
-                    JSONObject json = receberAtualizacao();
-                    if (json != null && json.has("tipo") && json.getString("tipo").equals("atualizacao")) {
-                        atualizarInterface(json.getDouble("valor"));
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
-    private JSONObject receberAtualizacao() throws Exception {
-        byte[] buffer = new byte[1024];
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-        multicastSocket.receive(packet);
-
-        String jsonString = new String(packet.getData(), 0, packet.getLength()).trim();
-
-        // Verifica se o JSON recebido não está vazio
-        if (jsonString.isEmpty()) {
-            System.out.println("Pacote vazio recebido. Ignorando...");
-            return null;
-        }
-
-        try {
-            return new JSONObject(jsonString);
-        } catch (Exception e) {
-            System.out.println("Erro ao processar JSON: " + jsonString);
-            return null;
-        }
-    }
-
-    private void atualizarInterface(double valor) {
-        String mensagem = "Novo lance:  R$" + valor;
-        System.out.println(mensagem);
-        SwingUtilities.invokeLater(() -> ta_todosLances.append(mensagem + "\n"));
     }
 
     private void bt_enviarLanceMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_enviarLanceMouseClicked

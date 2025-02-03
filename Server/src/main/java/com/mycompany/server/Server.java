@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
@@ -37,6 +38,8 @@ public class Server {
     private static final int MULTICAST_PORT = 5000; // Porta do grupo
     private List<Itens> itensLeilao;
     private ExecutorService executor = Executors.newCachedThreadPool();
+    private ScheduledExecutorService scheduler;
+    private boolean continuar = false;
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
@@ -82,18 +85,50 @@ public class Server {
                     jsonResponse.put("Entrada não autorizada", false);
                     out.println(jsonResponse);
                 }
-                for (Itens item : itensLeilao) {
-                    Thread.sleep(3000);
-                    enviarItens(item);
-                    processarLance();
-                    enviarTempo();
-
-                }
-
+                iniciarLeilao();
                 clientSocket.close();
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    public void iniciarLeilao() throws InterruptedException {
+        try {
+            for (Itens item : itensLeilao) {
+                Thread.sleep(3000);
+                enviarItens(item);
+                continuar = true;
+
+                Future<?> future = executor.submit(() -> {
+                    try {
+                        processarLance();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+
+                ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+                final AtomicInteger tempoRestante = new AtomicInteger(15);
+
+                Runnable tempo = () -> {
+                    if (tempoRestante.get() > 0) {
+                        enviarTempo(tempoRestante.get());
+                        tempoRestante.decrementAndGet();
+                    } else {
+                        continuar = false;
+                        scheduler.shutdown();
+                    }
+                };
+
+                scheduler.scheduleAtFixedRate(tempo, 0, 1, TimeUnit.SECONDS);
+
+                while (continuar) {
+                    Thread.sleep(100);
+                }
+            }
+        } catch (IOException ex) {
+
         }
     }
 
@@ -181,97 +216,94 @@ public class Server {
 
     public void adicionandoItens() {
         itensLeilao = new ArrayList<>();
-        itensLeilao.add(new Itens("Motoca Rosa", 300, 350, 50));
-        itensLeilao.add(new Itens("Boneca Barbie", 200, 200, 75));
-        itensLeilao.add(new Itens("Carrinho HotWheels", 400, 420, 60));
+        itensLeilao.add(new Itens("Motoca Rosa", 300, 350, 50, "item"));
+        itensLeilao.add(new Itens("Boneca Barbie", 200, 200, 75, "item"));
+        itensLeilao.add(new Itens("Carrinho HotWheels", 400, 420, 60, "item"));
     }
 
     public void enviarItens(Itens item) throws IOException, InterruptedException {
-        adicionandoItens();
-        JSONObject jsonItens = item.toJSON(); // Convertendo para JSON
-        String jsonString = jsonItens.toString();
-        byte[] data = jsonString.getBytes();
+        try {
+            adicionandoItens();
+            JSONObject jsonItens = item.toJSON(); // Convertendo para JSON
+            String jsonString = jsonItens.toString();
+            byte[] data = jsonString.getBytes();
 
-        // Envia o JSON via multicast
-        InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
-        DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
-        multicastSocket.send(packet);
-        System.out.println("Item enviado: " + jsonString);
+            // Envia o JSON via multicast
+            InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
+            DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
+            multicastSocket.send(packet);
+            System.out.println("Item enviado: " + jsonString);
+        } catch (IOException e) {
+            System.err.println("Error sending info: " + e.getMessage());
+        }
 
-        // Espera 30 segundos antes de enviar o próximo item
-        // Thread.sleep(30000);
     }
 
-    public void enviarTempo() throws UnknownHostException, IOException, InterruptedException {
-        
-        int tempoRestante = 30; // Tempo inicial (30 segundos)
+    public void enviarTempo(int tempo) {
 
-        // Executa a contagem regressiva de 30 segundos
-        for (int i = tempoRestante; i >= 0; i--) {
-            // Cria o objeto JSON para enviar o tempo restante
-            JSONObject jsonTempoRestante = new JSONObject();
-            jsonTempoRestante.put("tipo", "tempo");
-            jsonTempoRestante.put("tempoRestante", i);
+        JSONObject jsonTempoRestante = new JSONObject();
+        jsonTempoRestante.put("tipo", "tempo");
+        jsonTempoRestante.put("tempoRestante", tempo);
 
-            // Envia o tempo restante via multicast
-            byte[] data = jsonTempoRestante.toString().getBytes();
+        // Envia o tempo restante via multicast
+        byte[] data = jsonTempoRestante.toString().getBytes();
+        try ( DatagramSocket socket = new DatagramSocket()) {
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
             DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT); // Ajuste a porta conforme necessário
-            multicastSocket.send(packet);
+            socket.send(packet);
 
-            System.out.println("Tempo restante enviado: " + i + " segundos");
+            System.out.println("Tempo restante enviado: " + tempo + " segundos");
 
-            // Espera 1 segundo antes de enviar o próximo tempo
-            Thread.sleep(1000);
+            if (tempo == 1) {
+                continuar = true;
+            }
+        } catch (Exception e) {
         }
-        
-        
+
     }
 
-    private void processarLance() throws Exception {
-        executor.submit(() -> {
-            while (true) {
-                try {
-                    byte[] buffer = new byte[1024];
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                    multicastSocket.receive(packet); // Recebe o pacote do cliente
-                    
-                    System.out.println("Mensagem recebida");
-                    // Converte os dados recebidos para um JSONObject
-                    String jsonString = new String(packet.getData(), 0, packet.getLength());
-                    JSONObject json = new JSONObject(jsonString);
-                    
-                    System.out.println(json);
-                    // Verifica o tipo de dado recebido
-                    if (!json.getString("tipo").equals("lance")) {
-                        return;
-                    }
+    private void processarLance() {
+        while (continuar) {
+            try {
+                byte[] buffer = new byte[1024];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                multicastSocket.receive(packet); // Recebe o pacote do cliente
+                System.out.println("Mensagem recebida");
+                String jsonString = new String(packet.getData(), 0, packet.getLength());
+                JSONObject json = new JSONObject(jsonString);
 
-                    double valorLance = json.getDouble("valor");
-                    String item = json.getString("item");
-                    System.out.println(item);
-                    // Verificação dos lances para cada item
-                    if (item.equals("Motoca Rosa") && valorLance >= 350 && valorLance >= (50 + 350)) {
-                        json.put("Motoca Rosa", valorLance);
-                        System.out.println("É a Motoca Rosa! Lance: " + valorLance);
-                        enviarAtualizacao(item, valorLance);
-                    } else if (item.equals("Boneca Barbie") && valorLance >= 200 && valorLance >= (75 + 200)) {
-                        json.put("Boneca Barbie", valorLance);
-                        System.out.println("É a Boneca Barbie! Lance: " + valorLance);
-                        enviarAtualizacao(item, valorLance);
-                    } else if (item.equals("Carrinho HotWheels") && valorLance >= 420 && valorLance >= (60 + 420)) {
-                        json.put("Carrinho HotWheels", valorLance);
-                        System.out.println("É o Carrinho HotWheels! Lance: " + valorLance);
-                        enviarAtualizacao(item, valorLance);
-                    } else {
-                        System.out.println("Lance rejeitado: " + item + " - R$" + valorLance);
-                    }
-
-                } catch (Exception e) {
-                    e.printStackTrace();
+                if (!json.has("tipo") || !json.getString("tipo").equals("lance")) {
+                    continue; // Continua aguardando mais pacotes
                 }
+
+                double valorLance = json.getDouble("valor");
+                String item = json.getString("item");
+                System.out.println(item);
+                //EXEMPLO PRO MOMOI USAR 
+                System.out.println(itensLeilao.get(0).getValorInicial());
+                for (int i = 0; i < itensLeilao.size(); i++) {
+                    if (itensLeilao.get(i).equals("Motoca Rosa")) {
+                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                            enviarAtualizacao(item, valorLance);
+                            itensLeilao.get(i).setValorMinimo(valorLance);
+                        }
+                    } else if (itensLeilao.get(i).equals("Boneca Barbie")) {
+                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                            enviarAtualizacao(item, valorLance);
+                            itensLeilao.get(i).setValorMinimo(valorLance);
+                        }
+                    } else if (itensLeilao.get(i).equals("Carrinho HotWheels")) {
+                        if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
+                            enviarAtualizacao(item, valorLance);
+                            itensLeilao.get(i).setValorMinimo(valorLance);
+                        }
+                    }
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        });
+        }
     }
 
     private void enviarAtualizacao(String item, double valor) throws Exception {
