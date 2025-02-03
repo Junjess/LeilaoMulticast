@@ -50,10 +50,9 @@ public class TelaLeilao extends javax.swing.JPanel {
                     multicastSocket.receive(packet);
                     // Converte os dados recebidos (bytes) para uma string JSON
                     String jsonString = new String(packet.getData(), 0, packet.getLength());
-
+                    
                     // Converte a string JSON para um JSONObject
-                    JSONObject json = new JSONObject(jsonString);
-
+                    JSONObject json = new JSONObject(jsonString);                    
                     System.out.println("Mensagem recebida:" + json);
 
                     if (!json.has("cliente")) {
@@ -62,18 +61,21 @@ public class TelaLeilao extends javax.swing.JPanel {
                             String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
                             SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
 
-                        } else if (json.getString("tipo").equals("atualizacao")) {
-                            String mensagem = "Novo lance:  R$" + json.getDouble("valor");
+                        } else if (json.getString("tipo").equals("atualizacao")) {            
+                            String mensagem = "Novo lance:  R$" + descriptografarAES(json.getString("valor"), stringParaSecretKey(aesKey)) ;
                             SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
-                        } else {
+                        }else if(json.getString("tipo").equals("ganhador")){ 
+                            String anunciarVencedor = descriptografarAES(json.getString("ganhador"), stringParaSecretKey(aesKey));
+                            SwingUtilities.invokeLater(() -> ta_todosLances.setText(anunciarVencedor));
+                        }else {
                             //Adiciona o nome do item no tf
-                            String item = json.getString("item");
+                            String item = descriptografarAES(json.getString("item"), stringParaSecretKey(aesKey));
                             tf_nomeItem.setText(item);
-
+                            
                             // Formata a exibição para o TextArea
-                            String itemFormatado = "| Valor inicial: R$" + json.getDouble("valor inicial")
-                                    + "\n | Lance mínimo R$" + json.getInt("valor minimo")
-                                    + "\n | Valor mínimo entre lances R$" + json.getInt("valor minimo por lance");
+                            String itemFormatado = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
+                                    + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
+                                    + "\n | Valor mínimo entre lances R$" + descriptografarAES(json.getString("valor minimo por lance"), stringParaSecretKey(aesKey));
 
                             // Atualiza o TextArea com a informação do item
                             SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
@@ -85,6 +87,8 @@ public class TelaLeilao extends javax.swing.JPanel {
 
             } catch (IOException e) {
                 e.printStackTrace();
+            } catch (Exception ex) {
+                Logger.getLogger(TelaLeilao.class.getName()).log(Level.SEVERE, null, ex);
             }
         }).start();
     }
@@ -216,6 +220,13 @@ public class TelaLeilao extends javax.swing.JPanel {
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
         byte[] encryptedBytes = cipher.doFinal(message.getBytes());
         return Base64.getEncoder().encodeToString(encryptedBytes);
+    }
+
+    public static String descriptografarAES(String message, SecretKey secretKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey);
+        byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
+        return new String(decryptedBytes);
     }
 
     private void bt_enviarLanceMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_enviarLanceMouseClicked

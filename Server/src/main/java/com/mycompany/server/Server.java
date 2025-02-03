@@ -40,19 +40,19 @@ public class Server {
     private List<Itens> itensLeilao;
     private ExecutorService executor = Executors.newCachedThreadPool();
     private boolean continuar = false;
-    private String chaveAES = "";
+    private static String chaveAES = "";
     private String ganhador = "";
     private int conexoes = 0;
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
+        chaveAES = criarAES();
         server.iniciarServer();
     }
 
     public void iniciarServer() throws Exception {
         try ( ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("Servidor aguardando conexões na porta " + PORT + "...");
-            criarMulticast();
             adicionandoItens();
             while (conexoes < 2) {
                 Socket clientSocket = serverSocket.accept();
@@ -77,7 +77,6 @@ public class Server {
                 if (entrar == true) {
                     //Enviando resposta ao cliente
 
-                    chaveAES = criarAES();
                     jsonResponse.put("entrada", "true");
                     jsonResponse.put("grupo", criptografarComChavePublica(chavePublica, MULTICAST_GROUP));
                     jsonResponse.put("porta", criptografarComChavePublica(chavePublica, String.valueOf(MULTICAST_PORT)));
@@ -97,7 +96,8 @@ public class Server {
         }
     }
 
-    public void iniciarLeilao() throws InterruptedException {
+    public void iniciarLeilao() throws InterruptedException, IOException, Exception {
+        criarMulticast();
         try {
             for (Itens item : itensLeilao) {
                 Thread.sleep(3000);
@@ -130,12 +130,30 @@ public class Server {
                 while (continuar) {
                     Thread.sleep(100);
                 }
-                System.out.println("Vencedor"+ganhador);
+                JSONObject jsonVencedor = new JSONObject();
+                jsonVencedor.put("ganhador", encriptarAES(ganhador, stringParaSecretKey(chaveAES)));
+
+                byte[] data = jsonVencedor.toString().getBytes();
+                InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
+                DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
+                multicastSocket.send(packet);
             }
-         multicastSocket.close();
+            multicastSocket.close();
         } catch (IOException ex) {
 
         }
+    }
+
+    public static String encriptarAES(String message, SecretKey secretKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        byte[] encryptedBytes = cipher.doFinal(message.getBytes());
+        return Base64.getEncoder().encodeToString(encryptedBytes);
+    }
+
+    public static SecretKey stringParaSecretKey(String key) {
+        byte[] decodedKey = Base64.getDecoder().decode(key);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 
     public String verificarCliente(String cpf) throws IOException {
@@ -213,7 +231,7 @@ public class Server {
         return Base64.getEncoder().encodeToString(encryptedBytes);
     }
 
-    public String criarAES() throws NoSuchAlgorithmException {
+    public static String criarAES() throws NoSuchAlgorithmException {
         KeyGenerator keyGen = KeyGenerator.getInstance("AES");
         keyGen.init(256); // Define o tamanho da chave (256 bits)
         SecretKey secretKey = keyGen.generateKey();
@@ -227,18 +245,22 @@ public class Server {
         itensLeilao.add(new Itens("Carrinho HotWheels", 400, 420, 60, "item"));
     }
 
-    public void enviarItens(Itens item) throws IOException, InterruptedException {
+    public void enviarItens(Itens item) throws IOException, InterruptedException, Exception {
         try {
             adicionandoItens();
             JSONObject jsonItens = item.toJSON(); // Convertendo para JSON
-            String jsonString = jsonItens.toString();
-            byte[] data = jsonString.getBytes();
+            jsonItens.put("item", encriptarAES(item.getNomeItem(), stringParaSecretKey(chaveAES)));
+            jsonItens.put("valor inicial", encriptarAES(String.valueOf(item.getValorInicial()), stringParaSecretKey(chaveAES)));
+            jsonItens.put("valor minimo", encriptarAES(String.valueOf(item.getValorMinimo()), stringParaSecretKey(chaveAES)));
+            jsonItens.put("valor minimo por lance", encriptarAES(String.valueOf(item.getValorMinimoLance()), stringParaSecretKey(chaveAES)));
+            jsonItens.put("tipo", encriptarAES(item.getNomeItem(), stringParaSecretKey(chaveAES)));
+            byte[] data = jsonItens.toString().getBytes();
 
             // Envia o JSON via multicast
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
             DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
             multicastSocket.send(packet);
-            System.out.println("Item enviado: " + jsonString);
+            System.out.println("Item enviado: " + jsonItens);
         } catch (IOException e) {
             System.err.println("Error sending info: " + e.getMessage());
         }
@@ -246,7 +268,6 @@ public class Server {
     }
 
     public void enviarTempo(int tempo) {
-
         JSONObject jsonTempoRestante = new JSONObject();
         jsonTempoRestante.put("tipo", "tempo");
         jsonTempoRestante.put("tempoRestante", tempo);
@@ -277,24 +298,25 @@ public class Server {
                 String jsonString = new String(packet.getData(), 0, packet.getLength());
                 JSONObject json = new JSONObject(jsonString);
                 //Descriptografa com AES
-                if (!json.getString("tipo").equals("item") && !json.getString("tipo").equals("tempo")&&!json.getString("tipo").equals("atualizacao")) {
+                if (!json.getString("tipo").equals("item") && !json.getString("tipo").equals("tempo") && !json.getString("tipo").equals("atualizacao")) {
                     String item = descriptografarAES(json.getString("item"), stringParaSecretKey(chaveAES));
                     double valor = Double.parseDouble(descriptografarAES(json.getString("valor"), stringParaSecretKey(chaveAES)));
                     String cliente = descriptografarAES(json.getString("cliente"), stringParaSecretKey(chaveAES));
                     double valorLance = valor;
+
                     for (int i = 0; i < itensLeilao.size(); i++) {
                         if (itensLeilao.get(i).getNomeItem().equals(item)) {
                             if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                                 enviarAtualizacao(item, valorLance);
                                 itensLeilao.get(i).setValorMinimo(valorLance);
-                                ganhador  = cliente;
+                                ganhador = cliente;
                                 break;
                             }
                         } else if (itensLeilao.get(i).getNomeItem().equals(item)) {
                             if (valorLance >= itensLeilao.get(i).getValorMinimo() && valorLance >= (itensLeilao.get(i).getValorMinimoLance() + itensLeilao.get(i).getValorMinimo())) {
                                 enviarAtualizacao(item, valorLance);
                                 itensLeilao.get(i).setValorMinimo(valorLance);
-                                ganhador  = cliente;
+                                ganhador = cliente;
                                 break;
                             }
                         } else if (itensLeilao.get(i).getNomeItem().equals(item)) {
@@ -317,8 +339,8 @@ public class Server {
     private void enviarAtualizacao(String item, double valor) throws Exception {
         JSONObject jsonAtualizacao = new JSONObject();
         jsonAtualizacao.put("tipo", "atualizacao");
-        jsonAtualizacao.put("item", item);
-        jsonAtualizacao.put("valor", valor);
+        jsonAtualizacao.put("item", encriptarAES(item, stringParaSecretKey(chaveAES)));
+        jsonAtualizacao.put("valor", encriptarAES(String.valueOf(valor), stringParaSecretKey(chaveAES)));
 
         byte[] data = jsonAtualizacao.toString().getBytes();
         InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
@@ -332,10 +354,5 @@ public class Server {
         cipher.init(Cipher.DECRYPT_MODE, secretKey);
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
         return new String(decryptedBytes);
-    }
-
-    public static SecretKey stringParaSecretKey(String key) {
-        byte[] decodedKey = Base64.getDecoder().decode(key);
-        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 }
