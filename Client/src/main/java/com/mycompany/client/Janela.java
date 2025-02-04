@@ -5,6 +5,7 @@ import java.awt.BorderLayout;
 public class Janela extends javax.swing.JFrame {
     static TelaInicialCliente telaInicial;
     static TelaLeilao telaLeilao;
+    static TelaFinal telaFinal;
     
     public Janela() {
         initComponents();

@@ -131,6 +131,7 @@ public class Server {
                     Thread.sleep(100);
                 }
                 JSONObject jsonVencedor = new JSONObject();
+                jsonVencedor.put("tipo", "vencedor");
                 jsonVencedor.put("ganhador", encriptarAES(ganhador, stringParaSecretKey(chaveAES)));
 
                 byte[] data = jsonVencedor.toString().getBytes();
@@ -138,6 +139,12 @@ public class Server {
                 DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
                 multicastSocket.send(packet);
             }
+            JSONObject jsonEncerrado = new JSONObject();
+            jsonEncerrado.put("tipo", "encerrado");
+            byte[] data = jsonEncerrado.toString().getBytes();
+            InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
+            DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
+            multicastSocket.send(packet);
             multicastSocket.close();
         } catch (IOException ex) {
 

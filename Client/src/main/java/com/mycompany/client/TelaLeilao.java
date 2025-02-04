@@ -1,5 +1,6 @@
 package com.mycompany.client;
 
+import java.awt.BorderLayout;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -10,6 +11,7 @@ import java.util.logging.Logger;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import org.json.JSONObject;
 
@@ -50,9 +52,9 @@ public class TelaLeilao extends javax.swing.JPanel {
                     multicastSocket.receive(packet);
                     // Converte os dados recebidos (bytes) para uma string JSON
                     String jsonString = new String(packet.getData(), 0, packet.getLength());
-                    
+
                     // Converte a string JSON para um JSONObject
-                    JSONObject json = new JSONObject(jsonString);                    
+                    JSONObject json = new JSONObject(jsonString);
                     System.out.println("Mensagem recebida:" + json);
 
                     if (!json.has("cliente")) {
@@ -60,18 +62,23 @@ public class TelaLeilao extends javax.swing.JPanel {
                             // Se for tempo restante
                             String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
                             SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
-
-                        } else if (json.getString("tipo").equals("atualizacao")) {            
-                            String mensagem = "Novo lance:  R$" + descriptografarAES(json.getString("valor"), stringParaSecretKey(aesKey)) ;
+                        } else if (json.getString("tipo").equals("atualizacao")) {
+                            String mensagem = "Novo lance:  R$" + descriptografarAES(json.getString("valor"), stringParaSecretKey(aesKey));
                             SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
-                        }else if(json.getString("tipo").equals("ganhador")){ 
-                            String anunciarVencedor = descriptografarAES(json.getString("ganhador"), stringParaSecretKey(aesKey));
+                        } else if (json.getString("tipo").equals("vencedor")) {
+                            String anunciarVencedor = "Vencedor da rodada: " + descriptografarAES(json.getString("ganhador"), stringParaSecretKey(aesKey));
                             SwingUtilities.invokeLater(() -> ta_todosLances.setText(anunciarVencedor));
-                        }else {
+                        } else if (json.getString("tipo").equals("encerrado")) {
+                            Janela.telaFinal = new TelaFinal();
+                            JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
+                            janela.getContentPane().remove(this);
+                            janela.add(Janela.telaFinal, BorderLayout.CENTER);
+                            janela.pack();
+                        } else {
                             //Adiciona o nome do item no tf
                             String item = descriptografarAES(json.getString("item"), stringParaSecretKey(aesKey));
                             tf_nomeItem.setText(item);
-                            
+
                             // Formata a exibição para o TextArea
                             String itemFormatado = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
                                     + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
