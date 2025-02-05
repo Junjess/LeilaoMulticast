@@ -2,7 +2,10 @@ package com.mycompany.client;
 
 import java.awt.BorderLayout;
 import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -22,15 +25,11 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
-import org.json.JSONTokener;
 
 public class TelaInicialCliente extends javax.swing.JPanel {
 
     private keyPair keyPair;
-    String PUBLIC_KEY_FILE = "publicKeys.json";
 
     public TelaInicialCliente() {
         initComponents();
@@ -106,66 +105,38 @@ public class TelaInicialCliente extends javax.swing.JPanel {
         return Base64.getEncoder().encodeToString(signedData);
     }
 
-    private void salvarChavePublica(String cpf) throws IOException {
-        String publicKeyBase64 = Base64.getEncoder().encodeToString(keyPair.getChavePublica().getEncoded());
+    private void salvarChavePublica(String cpf, Socket socket) throws IOException {
+        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 
-        // Criar o objeto JSON contendo a chave pública e o CPF
+        // Criar JSON com CPF e chave pública
         JSONObject json = new JSONObject();
-        json.put("chavePublica", publicKeyBase64);
-        json.put("cpfCliente", cpf);
+        json.put("cpf", cpf);
+        json.put("chavePublica", Base64.getEncoder().encodeToString(keyPair.getChavePublica().getEncoded()));
 
-        String directoryPath = "C:\\Users\\rafae\\OneDrive\\Área de Trabalho\\TrabalhoSegurança\\Chaves";
-        File directory = new File(directoryPath);
+        // Criar o arquivo JSON no cliente
+        File jsonFile = new File("chave_" + cpf + ".json");
+        try ( FileWriter fileWriter = new FileWriter(jsonFile)) {
+            fileWriter.write(json.toString(4)); // 4 espaços para indentação
+            fileWriter.flush();
+        }
 
-        // Verifica se o diretório existe e o cria se necessário
-        if (!directory.exists()) {
-            if (!directory.mkdirs()) {
-                throw new IOException("Erro ao criar o diretório: " + directoryPath);
+        System.out.println("Arquivo JSON criado: " + jsonFile.getAbsolutePath());
+
+        // Enviar nome e tamanho do arquivo JSON
+        dos.writeUTF(jsonFile.getName());
+        dos.writeLong(jsonFile.length());
+
+        // Enviar conteúdo do arquivo JSON
+        try ( FileInputStream fis = new FileInputStream(jsonFile)) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                dos.write(buffer, 0, bytesRead);
             }
         }
 
-        // Caminho do arquivo
-        File file = new File(directory, PUBLIC_KEY_FILE);
-
-        JSONArray jsonArray;
-
-        // Verifica se o arquivo já existe
-        if (file.exists()) {
-            // Lê o conteúdo atual do arquivo e determina se é um JSONObject ou JSONArray
-            try ( FileReader fileReader = new FileReader(file)) {
-                JSONTokener tokener = new JSONTokener(fileReader);
-                Object parsedJson = tokener.nextValue();
-
-                if (parsedJson instanceof JSONObject) {
-                    // Converte o JSONObject para JSONArray
-                    jsonArray = new JSONArray();
-                    jsonArray.put(parsedJson);
-                } else if (parsedJson instanceof JSONArray) {
-                    // Utiliza o JSONArray existente
-                    jsonArray = (JSONArray) parsedJson;
-                } else {
-                    throw new IOException("Formato inválido no arquivo JSON existente.");
-                }
-            } catch (IOException | JSONException e) {
-                e.printStackTrace();
-                throw new IOException("Erro ao ler o arquivo existente: " + e.getMessage());
-            }
-        } else {
-            // Se o arquivo não existir, cria um novo JSONArray
-            jsonArray = new JSONArray();
-        }
-
-        // Adiciona o novo objeto JSON ao array
-        jsonArray.put(json);
-
-        // Grava o JSONArray atualizado no arquivo
-        try ( FileWriter fileWriter = new FileWriter(file)) {
-            fileWriter.write(jsonArray.toString(4)); // 4 espaços para indentação no JSON
-            System.out.println("Chave pública e CPF salvos em: " + file.getAbsolutePath());
-        } catch (IOException e) {
-            e.printStackTrace();
-            throw new IOException("Erro ao salvar a chave pública e CPF: " + e.getMessage());
-        }
+        dos.flush();
+        System.out.println("Arquivo JSON enviado com sucesso!");
     }
 
     private String descriptografar(PrivateKey chavePrivada, String message) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
@@ -174,51 +145,52 @@ public class TelaInicialCliente extends javax.swing.JPanel {
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
         return new String(decryptedBytes);
     }
+
     private void bt_entrarMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_entrarMouseClicked
-        try {
-            // Salvar a chave pública em um arquivo
-            salvarChavePublica(cpf_tf.getText());
-            try ( Socket socket = new Socket("localhost", 50001)) {
-                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        // Salvar a chave pública em um arquivo
 
-                String assinatura = assinaturaCPF(cpf_tf.getText(), keyPair);
-                System.out.println("Assinatura: " + assinatura);
-                // Enviar mensagem ao servidor
-                JSONObject json = new JSONObject();
-                json.put("assinatura", assinatura);
-                json.put("cpf", cpf_tf.getText());
+        try ( Socket socket = new Socket("192.168.3.11", 50001)) {
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                String message = json.toString();
-                out.println(message);
+            String assinatura = assinaturaCPF(cpf_tf.getText(), keyPair);
+            System.out.println("Assinatura: " + assinatura);
+            // Enviar mensagem ao servidor
+            JSONObject jsonEnviar = new JSONObject();
+            jsonEnviar.put("assinatura", assinatura);
+            jsonEnviar.put("cpf", cpf_tf.getText());
 
-                String resposta = in.readLine();// Receber resposta do servidor
-                JSONObject jsonResponse = new JSONObject(resposta);
+            String message = jsonEnviar.toString();
+            System.out.println("message: "+message);
+            out.println(message);
+            salvarChavePublica(cpf_tf.getText(), socket);
 
-                String entrada = jsonResponse.getString("entrada");
-                String grupo = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("grupo"));
-                int porta = Integer.valueOf(descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("porta")));
-                String aes = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("aes"));
-                String assinaturaServer = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("assinatura"));
+            String resposta = in.readLine();// Receber resposta do servidor
+            JSONObject jsonResponse = new JSONObject(resposta);
 
-                if (entrada.equals("true") && assinaturaServer.equals("server")) {
-                    Janela.telaLeilao = new TelaLeilao(grupo, porta, aes, cpf_tf.getText());
-                    JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
-                    janela.getContentPane().remove(this);
-                    janela.add(Janela.telaLeilao, BorderLayout.CENTER);
-                    janela.pack();
-                } else {
-                    System.out.println("NÃO ENTROU");
-                    //tela de erro, entrada negada
-                }
+            String entrada = jsonResponse.getString("entrada");
+            String grupo = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("grupo"));
+            int porta = Integer.valueOf(descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("porta")));
+            String aes = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("aes"));
+            String assinaturaServer = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("assinatura"));
 
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (Exception ex) {
-                Logger.getLogger(TelaInicialCliente.class.getName()).log(Level.SEVERE, null, ex);
+            if (entrada.equals("true") && assinaturaServer.equals("server")) {
+                Janela.telaLeilao = new TelaLeilao(grupo, porta, aes, cpf_tf.getText());
+                JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
+                janela.getContentPane().remove(this);
+                janela.add(Janela.telaLeilao, BorderLayout.CENTER);
+                janela.pack();
+            } else {
+                System.out.println("NÃO ENTROU");
+                //tela de erro, entrada negada
             }
-        } catch (IOException ex) {
-            Logger.getLogger(TelaInicialCliente.class.getName()).log(Level.SEVERE, null, ex);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+
+        } catch (Exception ex) {
+            Logger.getLogger(TelaInicialCliente.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
     }//GEN-LAST:event_bt_entrarMouseClicked
 
