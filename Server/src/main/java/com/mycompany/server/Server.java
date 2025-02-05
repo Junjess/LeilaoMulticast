@@ -63,7 +63,7 @@ public class Server {
 
     public void iniciarServer() throws Exception {
         try {
-            serverSocket = new ServerSocket(PORT, 50, InetAddress.getByName("192.168.3.11"));
+            serverSocket = new ServerSocket(PORT, 50, InetAddress.getByName("0.0.0.0"));
             System.out.println("Servidor aguardando conexões na porta " + PORT + "...");
             adicionandoItens();
 
