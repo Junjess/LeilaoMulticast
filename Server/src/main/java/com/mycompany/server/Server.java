@@ -42,7 +42,11 @@ public class Server {
     private boolean continuar = false;
     private static String chaveAES = "";
     private String ganhador = "";
-    private int conexoes = 0;
+    private static AtomicInteger conexoes = new AtomicInteger(0);
+    private static boolean leilaoIniciado = false;
+    private ServerSocket serverSocket;
+    private Itens itemAtual = new Itens();
+    JSONObject estadoAtual = new JSONObject();
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
@@ -51,47 +55,81 @@ public class Server {
     }
 
     public void iniciarServer() throws Exception {
-        try ( ServerSocket serverSocket = new ServerSocket(PORT)) {
+        try {
+            serverSocket = new ServerSocket(PORT);
             System.out.println("Servidor aguardando conexões na porta " + PORT + "...");
             adicionandoItens();
-            while (conexoes < 2) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
 
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+            new Thread(() -> {
+                while (!serverSocket.isClosed()) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
 
-                // Recebendo mensagem do cliente
-                String message = in.readLine();
-
-                JSONObject json = new JSONObject(message);
-                String cpf = json.getString("cpf");
-                String assinatura = json.getString("assinatura");
-
-                System.out.println("Recebido do cliente: " + message);
-
-                String chavePublica = verificarCliente(cpf);
-
-                boolean entrar = verificarAssinatura(cpf, assinatura, stringParaPublicKey(chavePublica));
-                JSONObject jsonResponse = new JSONObject();
-                if (entrar == true) {
-                    //Enviando resposta ao cliente
-
-                    jsonResponse.put("entrada", "true");
-                    jsonResponse.put("grupo", criptografarComChavePublica(chavePublica, MULTICAST_GROUP));
-                    jsonResponse.put("porta", criptografarComChavePublica(chavePublica, String.valueOf(MULTICAST_PORT)));
-                    jsonResponse.put("aes", criptografarComChavePublica(chavePublica, chaveAES));
-                    jsonResponse.put("assinatura", criptografarComChavePublica(chavePublica, "server"));
-                    out.println(jsonResponse);
-                    conexoes++;
-                } else {
-                    jsonResponse.put("Entrada não autorizada", false);
-                    out.println(jsonResponse);
+                        new Thread(() -> tratarCliente(clientSocket)).start();
+                    } catch (SocketException e) {
+                        System.out.println("Servidor foi encerrado.");
+                        break;
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
-                clientSocket.close();
-            }
-            iniciarLeilao();
+            }).start();
+
         } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void tratarCliente(Socket clientSocket) {
+        try {
+            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+
+            // Recebendo mensagem do cliente
+            String message = in.readLine();
+            JSONObject json = new JSONObject(message);
+            String cpf = json.getString("cpf");
+            String assinatura = json.getString("assinatura");
+
+            System.out.println("Recebido do cliente: " + message);
+
+            String chavePublica = verificarCliente(cpf);
+            boolean entrar = verificarAssinatura(cpf, assinatura, stringParaPublicKey(chavePublica));
+
+            JSONObject jsonResponse = new JSONObject();
+            if (entrar) {
+                jsonResponse.put("entrada", "true");
+                jsonResponse.put("grupo", criptografarComChavePublica(chavePublica, MULTICAST_GROUP));
+                jsonResponse.put("porta", criptografarComChavePublica(chavePublica, String.valueOf(MULTICAST_PORT)));
+                jsonResponse.put("aes", criptografarComChavePublica(chavePublica, chaveAES));
+                jsonResponse.put("assinatura", criptografarComChavePublica(chavePublica, "server"));
+
+                if (leilaoIniciado) {
+                    byte[] data = estadoAtual.toString().getBytes();
+                    InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
+                    DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
+                    multicastSocket.send(packet);
+                }
+
+                out.println(jsonResponse);
+                conexoes.incrementAndGet();
+            } else {
+                jsonResponse.put("entrada", "false");
+                out.println(jsonResponse);
+            }
+            clientSocket.close();
+
+            // Iniciar leilão quando houver pelo menos 2 conexões
+            if (conexoes.get() >= 2 && !leilaoIniciado) {
+                synchronized (Server.class) {
+                    if (!leilaoIniciado) {
+                        leilaoIniciado = true;
+                        iniciarLeilao();
+                    }
+                }
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -102,6 +140,7 @@ public class Server {
             for (Itens item : itensLeilao) {
                 Thread.sleep(3000);
                 enviarItens(item);
+                itemAtual = item;
                 continuar = true;
 
                 Future<?> future = executor.submit(() -> {
@@ -139,6 +178,7 @@ public class Server {
                 DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT);
                 multicastSocket.send(packet);
             }
+            Thread.sleep(3000);
             JSONObject jsonEncerrado = new JSONObject();
             jsonEncerrado.put("tipo", "encerrado");
             byte[] data = jsonEncerrado.toString().getBytes();
@@ -260,7 +300,14 @@ public class Server {
             jsonItens.put("valor inicial", encriptarAES(String.valueOf(item.getValorInicial()), stringParaSecretKey(chaveAES)));
             jsonItens.put("valor minimo", encriptarAES(String.valueOf(item.getValorMinimo()), stringParaSecretKey(chaveAES)));
             jsonItens.put("valor minimo por lance", encriptarAES(String.valueOf(item.getValorMinimoLance()), stringParaSecretKey(chaveAES)));
-            jsonItens.put("tipo", encriptarAES(item.getNomeItem(), stringParaSecretKey(chaveAES)));
+            jsonItens.put("tipo", "item");
+
+            estadoAtual.put("item", encriptarAES(item.getNomeItem(), stringParaSecretKey(chaveAES)));
+            estadoAtual.put("valor inicial", encriptarAES(String.valueOf(item.getValorInicial()), stringParaSecretKey(chaveAES)));
+            estadoAtual.put("valor minimo", encriptarAES(String.valueOf(item.getValorMinimo()), stringParaSecretKey(chaveAES)));
+            estadoAtual.put("valor minimo por lance", encriptarAES(String.valueOf(item.getValorMinimoLance()), stringParaSecretKey(chaveAES)));
+            estadoAtual.put("tipo", "estadoAtual");
+
             byte[] data = jsonItens.toString().getBytes();
 
             // Envia o JSON via multicast

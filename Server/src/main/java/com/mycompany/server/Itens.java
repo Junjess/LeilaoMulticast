@@ -22,6 +22,9 @@ public class Itens {
         return tipo;
     }
 
+    public Itens() {
+    }
+
     public void setTipo(String tipo) {
         this.tipo = tipo;
     }

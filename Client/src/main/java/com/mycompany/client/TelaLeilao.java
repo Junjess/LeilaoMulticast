@@ -56,38 +56,55 @@ public class TelaLeilao extends javax.swing.JPanel {
                     // Converte a string JSON para um JSONObject
                     JSONObject json = new JSONObject(jsonString);
                     System.out.println("Mensagem recebida:" + json);
+                    String item = "";
+                    if (json.has("item")) {
+                        item = descriptografarAES(json.getString("item"), stringParaSecretKey(aesKey));
+                    }
 
                     if (!json.has("cliente")) {
-                        if (json.has("tempoRestante")) {
-                            // Se for tempo restante
-                            String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
-                            SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
-                        } else if (json.getString("tipo").equals("atualizacao")) {
-                            String mensagem = "Novo lance:  R$" + descriptografarAES(json.getString("valor"), stringParaSecretKey(aesKey));
-                            SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
-                        } else if (json.getString("tipo").equals("vencedor")) {
-                            String anunciarVencedor = "Vencedor da rodada: " + descriptografarAES(json.getString("ganhador"), stringParaSecretKey(aesKey));
-                            SwingUtilities.invokeLater(() -> ta_todosLances.setText(anunciarVencedor));
-                        } else if (json.getString("tipo").equals("encerrado")) {
-                            Janela.telaFinal = new TelaFinal();
-                            JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
-                            janela.getContentPane().remove(this);
-                            janela.add(Janela.telaFinal, BorderLayout.CENTER);
-                            janela.pack();
-                        } else {
-                            //Adiciona o nome do item no tf
-                            String item = descriptografarAES(json.getString("item"), stringParaSecretKey(aesKey));
-                            tf_nomeItem.setText(item);
+                        if (!tf_nomeItem.equals(item)) {
+                            if (json.has("tempoRestante")) {
+                                // Se for tempo restante
+                                String tempoRestante = String.valueOf(json.getLong("tempoRestante"));
+                                SwingUtilities.invokeLater(() -> tf_tempoRestante.setText(tempoRestante));
+                            } else if (json.getString("tipo").equals("atualizacao")) {
+                                String mensagem = "Novo lance:  R$" + descriptografarAES(json.getString("valor"), stringParaSecretKey(aesKey));
+                                SwingUtilities.invokeLater(() -> ta_todosLances.append("\n" + mensagem));
+                            } else if (json.getString("tipo").equals("vencedor")) {
+                                String anunciarVencedor = "Vencedor da rodada: " + descriptografarAES(json.getString("ganhador"), stringParaSecretKey(aesKey));
+                                SwingUtilities.invokeLater(() -> ta_todosLances.setText(anunciarVencedor));
+                            } else if (json.getString("tipo").equals("encerrado")) {
+                                Janela.telaFinal = new TelaFinal();
+                                JFrame janela = (JFrame) SwingUtilities.getWindowAncestor(this);
+                                janela.getContentPane().remove(this);
+                                janela.add(Janela.telaFinal, BorderLayout.CENTER);
+                                janela.pack();
+                            } else if (json.getString("tipo").equals("estadoAtual")) {
+                                Thread.sleep(1000);
+                                System.out.println("entrooooo no estado atual");
+                                tf_nomeItem.setText(item);
+                                String itemClienteNovo = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
+                                        + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
+                                        + "\n | Valor mínimo entre lances R$" + descriptografarAES(json.getString("valor minimo por lance"), stringParaSecretKey(aesKey));
+                                System.out.println("antes de setar");
+                                ta_todosLances.setText(itemClienteNovo);
+                                System.out.println("depois");
+                                
+                            } else {
+                                //Adiciona o nome do item no tf
+                                tf_nomeItem.setText(item);
 
-                            // Formata a exibição para o TextArea
-                            String itemFormatado = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
-                                    + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
-                                    + "\n | Valor mínimo entre lances R$" + descriptografarAES(json.getString("valor minimo por lance"), stringParaSecretKey(aesKey));
+                                // Formata a exibição para o TextArea
+                                String itemFormatado = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
+                                        + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
+                                        + "\n | Valor mínimo entre lances R$" + descriptografarAES(json.getString("valor minimo por lance"), stringParaSecretKey(aesKey));
 
-                            // Atualiza o TextArea com a informação do item
-                            SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
-                            nomeItem = item;
+                                // Atualiza o TextArea com a informação do item
+                                SwingUtilities.invokeLater(() -> ta_todosLances.setText(itemFormatado));
+                                nomeItem = item;
+                            }
                         }
+
                     }
 
                 }
@@ -242,6 +259,7 @@ public class TelaLeilao extends javax.swing.JPanel {
 
             int valorLance = Integer.parseInt(tf_lanceCliente.getText());
             enviarLance(item, valorLance);
+            tf_lanceCliente.setText("");
         } catch (Exception ex) {
             Logger.getLogger(TelaLeilao.class.getName()).log(Level.SEVERE, null, ex);
         }
