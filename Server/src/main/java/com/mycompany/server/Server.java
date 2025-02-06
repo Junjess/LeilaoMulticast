@@ -132,7 +132,7 @@ public class Server {
             }
 
             // Iniciar leilão quando houver pelo menos 2 conexões
-            if (conexoes.get() >= 2 && !leilaoIniciado) {
+            if (conexoes.get() >= 1 && !leilaoIniciado) {
                 synchronized (Server.class) {
                     if (!leilaoIniciado) {
                         leilaoIniciado = true;
@@ -337,9 +337,8 @@ public class Server {
 
                 if (cpfCadastrado != null) {
                     String cpfCadastradoNormalizado = cpfCadastrado.replaceAll("\\D", "");
-                    System.out.println("cpf normal: "+cpfNormalizado);
-                    System.out.println("cpf cadastrada: "+cpfCadastradoNormalizado);
                     if (cpfCadastradoNormalizado.equals(cpfNormalizado)) {
+                        System.out.println("Dentro do if");
                         return jsonObject.optString("chavePublica", null);
                     }
                 }
@@ -367,7 +366,8 @@ public class Server {
         try {
             multicastSocket = new MulticastSocket(MULTICAST_PORT);
             address = InetAddress.getByName(MULTICAST_GROUP);
-            multicastSocket.joinGroup(address);
+            NetworkInterface networkInterface = NetworkInterface.getByName("Wi-Fi");
+            multicastSocket.joinGroup(new InetSocketAddress(address, MULTICAST_PORT), networkInterface);
         } catch (IOException E) {
         }
     }

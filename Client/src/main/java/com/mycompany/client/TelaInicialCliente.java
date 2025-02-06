@@ -5,8 +5,6 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -149,7 +147,7 @@ public class TelaInicialCliente extends javax.swing.JPanel {
     private void bt_entrarMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_entrarMouseClicked
         // Salvar a chave pública em um arquivo
 
-        try ( Socket socket = new Socket("192.168.3.11", 50001)) {
+        try ( Socket socket = new Socket("192.168.3.16", 50001)) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 

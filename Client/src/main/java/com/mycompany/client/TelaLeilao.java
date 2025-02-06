@@ -4,7 +4,9 @@ import java.awt.BorderLayout;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
+import java.net.NetworkInterface;
 import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -42,7 +44,8 @@ public class TelaLeilao extends javax.swing.JPanel {
     public void entrarNoGrupoMulticast() {
         new Thread(() -> {
             try {
-                multicastSocket.joinGroup(group); // Cliente entra no grupo multicast
+                NetworkInterface networkInterface = NetworkInterface.getByName("Wi-Fi");
+                multicastSocket.joinGroup(new InetSocketAddress(group, portaMulticast), networkInterface);
                 System.out.println("Cliente entrou no grupo multicast.");
                 byte[] buffer = new byte[1024]; // Buffer para armazenar os dados recebidos
                 String nomeItem = "";
