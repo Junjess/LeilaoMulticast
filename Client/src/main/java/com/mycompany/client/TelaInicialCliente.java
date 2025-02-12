@@ -134,7 +134,6 @@ public class TelaInicialCliente extends javax.swing.JPanel {
         }
 
         dos.flush();
-        System.out.println("Arquivo JSON enviado com sucesso!");
     }
 
     private String descriptografar(PrivateKey chavePrivada, String message) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
@@ -147,12 +146,11 @@ public class TelaInicialCliente extends javax.swing.JPanel {
     private void bt_entrarMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_bt_entrarMouseClicked
         // Salvar a chave pública em um arquivo
 
-        try ( Socket socket = new Socket("192.168.3.16", 50001)) {
+        try ( Socket socket = new Socket("10.151.57.116", 50001)) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             String assinatura = assinaturaCPF(cpf_tf.getText(), keyPair);
-            System.out.println("Assinatura: " + assinatura);
             // Enviar mensagem ao servidor
             JSONObject jsonEnviar = new JSONObject();
             jsonEnviar.put("assinatura", assinatura);
@@ -165,7 +163,7 @@ public class TelaInicialCliente extends javax.swing.JPanel {
 
             String resposta = in.readLine();// Receber resposta do servidor
             JSONObject jsonResponse = new JSONObject(resposta);
-
+            System.out.println("json: "+jsonResponse);
             String entrada = jsonResponse.getString("entrada");
             String grupo = descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("grupo"));
             int porta = Integer.valueOf(descriptografar(keyPair.getChavePrivada(), jsonResponse.getString("porta")));

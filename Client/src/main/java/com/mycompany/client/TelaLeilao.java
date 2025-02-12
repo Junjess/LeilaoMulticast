@@ -34,6 +34,7 @@ public class TelaLeilao extends javax.swing.JPanel {
         cpf = cpfCliente;
         group = InetAddress.getByName(grupoMulticast);
         multicastSocket = new MulticastSocket(portaMulticast);
+        multicastSocket.setReuseAddress(true);
         entrarNoGrupoMulticast();
         ta_todosLances.setEditable(false);
         tf_nomeItem.setEditable(false);
@@ -44,9 +45,13 @@ public class TelaLeilao extends javax.swing.JPanel {
     public void entrarNoGrupoMulticast() {
         new Thread(() -> {
             try {
-                NetworkInterface networkInterface = NetworkInterface.getByName("Wi-Fi");
-                multicastSocket.joinGroup(new InetSocketAddress(group, portaMulticast), networkInterface);
-                System.out.println("Cliente entrou no grupo multicast.");
+                /*NetworkInterface networkInterface = NetworkInterface.getByName("wlan0");
+                if(networkInterface==null){
+                    throw new IOException("INTERFACE DE REDE NÃO ENCONTRADA");
+                }
+                multicastSocket.joinGroup(new InetSocketAddress(group, portaMulticast), networkInterface);*/
+               multicastSocket.joinGroup(group);
+               System.out.println("Cliente entrou no grupo multicast.");
                 byte[] buffer = new byte[1024]; // Buffer para armazenar os dados recebidos
                 String nomeItem = "";
                 while (true) {
@@ -58,7 +63,6 @@ public class TelaLeilao extends javax.swing.JPanel {
 
                     // Converte a string JSON para um JSONObject
                     JSONObject json = new JSONObject(jsonString);
-                    System.out.println("Mensagem recebida:" + json);
                     String item = "";
                     if (json.has("item")) {
                         item = descriptografarAES(json.getString("item"), stringParaSecretKey(aesKey));
@@ -84,15 +88,11 @@ public class TelaLeilao extends javax.swing.JPanel {
                                 janela.pack();
                             } else if (json.getString("tipo").equals("estadoAtual")) {
                                 Thread.sleep(1000);
-                                System.out.println("entrooooo no estado atual");
                                 tf_nomeItem.setText(item);
                                 String itemClienteNovo = "| Valor inicial: R$" + descriptografarAES(json.getString("valor inicial"), stringParaSecretKey(aesKey))
                                         + "\n | Lance mínimo R$" + descriptografarAES(json.getString("valor minimo"), stringParaSecretKey(aesKey))
                                         + "\n | Valor mínimo entre lances R$" + descriptografarAES(json.getString("valor minimo por lance"), stringParaSecretKey(aesKey));
-                                System.out.println("antes de setar");
-                                ta_todosLances.setText(itemClienteNovo);
-                                System.out.println("depois");
-                                
+                                ta_todosLances.setText(itemClienteNovo);                                
                             } else {
                                 //Adiciona o nome do item no tf
                                 tf_nomeItem.setText(item);
@@ -234,7 +234,6 @@ public class TelaLeilao extends javax.swing.JPanel {
         group = InetAddress.getByName(grupoMulticast);
         DatagramPacket packet = new DatagramPacket(data, data.length, group, portaMulticast);
         multicastSocket.send(packet);
-        System.out.println("Lance enviado: " + jsonLance);
     }
 
     public static SecretKey stringParaSecretKey(String key) {

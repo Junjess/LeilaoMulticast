@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.*;
-import java.nio.file.Files;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
@@ -41,7 +40,7 @@ public class Server {
     private static final int PORT = 50001;
     private MulticastSocket multicastSocket;
     private InetAddress address;
-    private static final String MULTICAST_GROUP = "230.0.0.1"; // Endereço do grupo multicast
+    private static final String MULTICAST_GROUP = "230.0.0.0"; // Endereço do grupo multicast
     private static final int MULTICAST_PORT = 5000; // Porta do grupo
     private List<Itens> itensLeilao;
     private ExecutorService executor = Executors.newCachedThreadPool();
@@ -71,11 +70,8 @@ public class Server {
                 while (!serverSocket.isClosed()) {
                     try {
                         Socket clientSocket = serverSocket.accept();
-                        System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
-
                         new Thread(() -> tratarCliente(clientSocket)).start();
                     } catch (SocketException e) {
-                        System.out.println("Servidor foi encerrado.");
                         break;
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -93,7 +89,6 @@ public class Server {
             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
-            System.out.println("Tratar Cliente");
             //Recebendo mensagem do cliente
             String message = in.readLine();
             if(!message.contains("cpf")){
@@ -103,8 +98,6 @@ public class Server {
             JSONObject json = new JSONObject(message);
             String cpf = json.getString("cpf");
             String assinatura = json.getString("assinatura");
-
-            System.out.println("Recebido do cliente: " + json);
 
             String chavePublica = verificarCliente(cpf, clientSocket, centralFile);
             boolean entrar = verificarAssinatura(cpf, assinatura, stringParaPublicKey(chavePublica));
@@ -216,8 +209,7 @@ public class Server {
     }
 
     public String verificarCliente(String cpf, Socket clientSocket, File centralFile) throws IOException {
-        System.out.println("Entrou no verificar cliente");
-// 🟢 Verifica se o arquivo existe; se não existir, cria um novo com um array vazio []
+        //Verifica se o arquivo existe; se não existir, cria um novo com um array vazio []
         if (!centralFile.exists() || centralFile.length() == 0) {
             try ( FileWriter fileWriter = new FileWriter(centralFile)) {
                 fileWriter.write("[]"); // Inicializa com um JSON Array vazio
@@ -225,17 +217,16 @@ public class Server {
             }
         }
 
-        // 🔹 Tenta encontrar a chave pública antes de receber um novo arquivo
+        //Tenta encontrar a chave pública antes de receber um novo arquivo
         String chavePublica = buscarChavePublica(centralFile, cpf);
         if (chavePublica != null) {
             return chavePublica; // Retorna a chave pública encontrada
         }
 
-        // 🔹 Se o CPF não foi encontrado, recebe um novo arquivo do cliente
+        //Se o CPF não foi encontrado, recebe um novo arquivo do cliente
         
         receberArquivo(clientSocket);
-        System.out.println("Conteúdo do arquivo após o recebimento: " + new String(Files.readAllBytes(centralFile.toPath())));
-        // 🔹 Tenta ler o JSON atualizado após receber o arquivo
+        //Tenta ler o JSON atualizado após receber o arquivo
         chavePublica = buscarChavePublica(centralFile, cpf);
         if (chavePublica != null) {
             return chavePublica;
@@ -250,7 +241,7 @@ public class Server {
         FileOutputStream fos = null;
 
         try {
-            // 🟢 Receber nome e tamanho do arquivo JSON
+            //Receber nome e tamanho do arquivo JSON
             String fileName = dis.readUTF();
             long fileSize = dis.readLong();
 
@@ -270,7 +261,7 @@ public class Server {
             fos.flush();
             
 
-            // 🟢 Ler JSON do arquivo recebido
+            // Ler JSON do arquivo recebido
             JSONObject jsonObject;
             try ( FileReader fileReader = new FileReader(tempFile)) {
                 JSONTokener tokener = new JSONTokener(fileReader);
@@ -282,11 +273,7 @@ public class Server {
                 throw new IOException("Erro: JSON recebido não contém 'cpf' ou 'chavePublica'.");
             }
 
-            // Exibir JSON para debug
-            System.out.println("CPF: " + jsonObject.getString("cpf"));
-            System.out.println("Chave Pública: " + jsonObject.getString("chavePublica"));
-
-            // 🔹 Agora podemos salvar os dados em um arquivo central
+            // salvar os dados em um arquivo central
             salvarDados(jsonObject);
 
         } catch (IOException e) {
@@ -320,7 +307,6 @@ public class Server {
         // Salvar JSON atualizado
         try ( FileWriter fileWriter = new FileWriter(centralFile)) {
             fileWriter.write(jsonArray.toString(4)); // 4 espaços de indentação
-            System.out.println("Dados salvos em: " + centralFile.getAbsolutePath());
         }
     }
 
@@ -328,7 +314,6 @@ public class Server {
         try ( FileReader reader = new FileReader(file)) {
             JSONTokener tokener = new JSONTokener(reader);
             JSONArray jsonArray = new JSONArray(tokener);
-            System.out.println("file: "+file.getAbsolutePath());
             String cpfNormalizado = cpf.replaceAll("\\D", "");
             
             for (int i = 0; i < jsonArray.length(); i++) {
@@ -338,7 +323,6 @@ public class Server {
                 if (cpfCadastrado != null) {
                     String cpfCadastradoNormalizado = cpfCadastrado.replaceAll("\\D", "");
                     if (cpfCadastradoNormalizado.equals(cpfNormalizado)) {
-                        System.out.println("Dentro do if");
                         return jsonObject.optString("chavePublica", null);
                     }
                 }
@@ -364,10 +348,21 @@ public class Server {
 
     public void criarMulticast() throws IOException {
         try {
+            /*Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while(interfaces.hasMoreElements()){
+                NetworkInterface ni = interfaces.nextElement();
+                System.out.println(ni.getName());
+            }*/
             multicastSocket = new MulticastSocket(MULTICAST_PORT);
+            multicastSocket.setReuseAddress(true);
             address = InetAddress.getByName(MULTICAST_GROUP);
-            NetworkInterface networkInterface = NetworkInterface.getByName("Wi-Fi");
+            NetworkInterface networkInterface = NetworkInterface.getByName("wlan1");
+            
+            if(networkInterface==null){
+                    throw new IOException("INTERFACE DE REDE NÃO ENCONTRADA");
+                }
             multicastSocket.joinGroup(new InetSocketAddress(address, MULTICAST_PORT), networkInterface);
+            //multicastSocket.joinGroup(address);
         } catch (IOException E) {
         }
     }
@@ -434,7 +429,6 @@ public class Server {
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
             DatagramPacket packet = new DatagramPacket(data, data.length, group, MULTICAST_PORT); // Ajuste a porta conforme necessário
             socket.send(packet);
-
             System.out.println("Tempo restante enviado: " + tempo + " segundos");
 
             if (tempo == 1) {
